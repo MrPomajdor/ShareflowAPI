@@ -20,7 +20,7 @@ type Service interface {
 	// It returns a JWT token if authentication succeeds. Otherwise, an error is returned.
 	Login(ctx context.Context, email, password string) (string, error)
 	// Register registers a user using full name, email, password and AuthCode
-	// It returns a JWT token if registration succeeds. Otherwise, an error is returned.
+	// An error is returned if the registration does not succeed.
 	Register(ctx context.Context, fname, lname, email, password, authcode string) error
 }
 
