@@ -12,6 +12,7 @@ import (
 	"github.com/MrPomajdor/ShareFlowAPI/internal/config"
 	errors "github.com/MrPomajdor/ShareFlowAPI/internal/errors"
 	"github.com/MrPomajdor/ShareFlowAPI/internal/healthcheck"
+	"github.com/MrPomajdor/ShareFlowAPI/internal/info"
 	accesslog "github.com/MrPomajdor/ShareFlowAPI/pkg/accesslog"
 	"github.com/MrPomajdor/ShareFlowAPI/pkg/dbcontext"
 	dbx "github.com/go-ozzo/ozzo-dbx"
@@ -78,12 +79,12 @@ func buildHandler(logger *logrus.Logger, db *dbcontext.DB, cfg *config.Config) h
 
 	rg := router.Group("/v1")
 
-	//authHandler := auth.Handler(cfg.JWTSigningKey)
-	/*
-		album.RegisterHandlers(rg.Group(""),
-			album.NewService(album.NewRepository(db, logger), logger),
-			authHandler, logger,
-		)*/
+	authHandler := auth.Handler(cfg.JWTSigningKey)
+
+	info.RegisterHandlers(rg.Group(""),
+		info.NewService(logger, db),
+		authHandler, logger,
+	)
 
 	auth.RegisterHandlers(rg.Group(""),
 		auth.NewService(cfg.JWTSigningKey, cfg.JWTExpiration, db, logger),

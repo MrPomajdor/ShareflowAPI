@@ -1,0 +1,82 @@
+{
+    "/v1/login":{
+        "Request":{
+            "Headers":"Bearer token",
+            "Body":{
+                "type":"json",
+                "content":{
+                    "email":"e@mail.com",
+                    "password":"password"
+                }
+            }
+        },
+        "Response":{
+            "Headers":"None",
+            "Body":{
+                "type":"json",
+                "content":{
+                    "token":"JWT TOKEN"
+                }
+            }
+        }
+    },
+    "/v1/register":{
+        "Request":{
+            "Headers":"None",
+            "Body":{
+                "type":"json",
+                "content":{
+                    "first_name":"first name",
+                    "last_name":"last name",
+                    "email":"email",
+                    "password":"password",
+                    "authcode":"authorization code"
+                }
+            }
+        },
+        "Response":{
+            "Headers":"None",
+            "Body":{
+                "type":"HTTP_Code"
+            }
+        }
+    },
+    "/v1/me/info":{
+        "Request":{
+            "Headers":"Bearer token",
+            "Body":{
+                "type":"None"
+            }
+        },
+        "Response":{
+            "Headers":"None",
+            "Body":{
+                "type":"json",
+                "content":{
+                    "first_name":"first name",
+                    "last_name":"last name",
+                    "email":"e@mail.com",
+                    "profile_img":"profile img url"
+                }
+            }
+        }
+    },
+    "/v1/me/update":{
+        "Request":{
+            "Headers":"Bearer token",
+            "Body":{
+                "type":"json",
+                "content":{
+                    "field":"field name eg. profile_img",
+                    "value":"field value"
+                }
+            }
+        },
+        "Response":{
+            "Headers":"None",
+            "Body":{
+                "type":"HTTP_Code"
+            }
+        }
+    }
+}

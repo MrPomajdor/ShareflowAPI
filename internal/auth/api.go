@@ -54,11 +54,10 @@ func register(service Service, logger *logrus.Logger) routing.Handler {
 
 		err := service.Register(c.Request.Context(), req.Fname, req.Lname, req.Email, req.Password, req.Authcode)
 		if err != nil {
-			return errors.BadRequest(err.Error())
+			return err
 		}
-		return c.Write(struct {
-			Status  int    `json:"status"`
+		return c.WriteWithStatus(struct {
 			Message string `json:"message"`
-		}{http.StatusOK, "Registration successfull"})
+		}{"Registration successfull"}, http.StatusOK)
 	}
 }

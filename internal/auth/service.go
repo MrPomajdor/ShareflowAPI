@@ -24,18 +24,6 @@ type Service interface {
 	Register(ctx context.Context, fname, lname, email, password, authcode string) error
 }
 
-// Identity represents an authenticated user identity.
-type Identity interface {
-	// GetID returns the user ID.
-	GetID() int
-	// GetFirstName returns the user first name.
-	GetFirstName() string
-	// GetLastName returns the user last name.
-	GetLastName() string
-	// GetName returns the user email.
-	GetEmail() string
-}
-
 type service struct {
 	signingKey      string
 	tokenExpiration int
@@ -65,7 +53,7 @@ func (s service) Register(ctx context.Context, fname, lname, email, password, au
 
 // authenticate authenticates a user using username and password.
 // If username and password are correct, an identity is returned. Otherwise, nil is returned.
-func (s service) authenticate(ctx context.Context, email, password string) (Identity, error) {
+func (s service) authenticate(ctx context.Context, email, password string) (entity.Identity, error) {
 	logger := s.logger.WithContext(ctx).WithField("user", email)
 	hashed, err := crypt.HashPassword(password)
 	if err != nil {
@@ -78,7 +66,7 @@ func (s service) authenticate(ctx context.Context, email, password string) (Iden
 		"password": hashed,
 	})
 	User := entity.User{}
-	rowErr := q.Row(&User.ID, &User.Email, &User.HashedPassword, &User.FirstName, &User.LastName, &User.AuthCode, &User.CreatedAt, &User.LastLogin, &User.LastLoginIP)
+	rowErr := q.One(&User) //q.Row(&User.ID, &User.Email, &User.HashedPassword, &User.FirstName, &User.LastName, &User.ProfileIMG, &User.AuthCode, &User.CreatedAt, &User.LastLogin, &User.LastLoginIP)
 	if rowErr != nil {
 		logger.WithError(rowErr).Trace("Row error")
 		return nil, fmt.Errorf("invalid email or password")
@@ -111,7 +99,7 @@ func (s service) register(ctx context.Context, fname, lname, email, password, au
 	qErr := q.Row(&authcode_db.ID, &authcode_db.Authcode, &authcode_db.Email, &authcode_db.CreationDate, &authcode_db.ExpirationDate, &authcode_db.Used)
 	if qErr != nil {
 		logger.WithFields(logrus.Fields{"reason": "invalid authcode", "error": qErr}).Error("user creation failed")
-		return fmt.Errorf("registration failed - invalid authcode")
+		return errors.BadRequest("registration failed - invalid authcode")
 	}
 
 	q2 := s.database.With(ctx).NewQuery("SELECT COUNT(*) FROM users WHERE email={:email}")
@@ -122,13 +110,13 @@ func (s service) register(ctx context.Context, fname, lname, email, password, au
 	q2.Row(&count)
 	if count != 0 {
 		logger.Error("Account already exists")
-		return fmt.Errorf("account already exists")
+		return errors.BadRequest("account already exists")
 	}
 
 	hashed, hash_err := crypt.HashPassword(password)
 	if hash_err != nil {
 		logger.Error("Failed to hash password")
-		return fmt.Errorf("failed to hash password")
+		return errors.InternalServerError("failed to hash password")
 	}
 
 	q3 := s.database.With(ctx).NewQuery("INSERT INTO `users`(`email`, `password`, `first_name`, `last_name`, `auth_code`) VALUES ({:email},{:password},{:first_name},{:last_name},{:auth_code})")
@@ -144,16 +132,16 @@ func (s service) register(ctx context.Context, fname, lname, email, password, au
 		return nil
 	}
 	logger.WithField("reason", "not sure").Error("user creation failed")
-	return fmt.Errorf("registration failed")
+	return errors.InternalServerError("registration failed")
 }
 
 // generateJWT generates a JWT that encodes an identity.
-func (s service) generateJWT(identity Identity) (string, error) {
+func (s service) generateJWT(identity entity.Identity) (string, error) {
 	return jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"id":       identity.GetID(),
-		"firsname": identity.GetFirstName(),
-		"lastname": identity.GetLastName(),
-		"email":    identity.GetEmail(),
-		"exp":      time.Now().Add(time.Duration(s.tokenExpiration) * time.Hour).Unix(),
+		"id":        identity.GetID(),
+		"firstname": identity.GetFirstName(),
+		"lastname":  identity.GetLastName(),
+		"email":     identity.GetEmail(),
+		"exp":       time.Now().Add(time.Duration(s.tokenExpiration) * time.Hour).Unix(),
 	}).SignedString([]byte(s.signingKey))
 }

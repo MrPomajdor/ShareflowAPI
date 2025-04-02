@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/MrPomajdor/ShareFlowAPI/internal/entity"
 	routing "github.com/go-ozzo/ozzo-routing/v2"
@@ -16,15 +17,18 @@ func Handler(verificationKey string) routing.Handler {
 
 // handleToken stores the user identity in the request context so that it can be accessed elsewhere.
 func handleToken(c *routing.Context, token *jwt.Token) error {
-	ctx := WithUser(
-		c.Request.Context(),
-		token.Claims.(jwt.MapClaims)["id"].(int),
-		token.Claims.(jwt.MapClaims)["firstname"].(string),
-		token.Claims.(jwt.MapClaims)["lastname"].(string),
-		token.Claims.(jwt.MapClaims)["email"].(string),
-	)
-	c.Request = c.Request.WithContext(ctx)
-	return nil
+	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
+		ctx := WithUser(
+			c.Request.Context(),
+			int(claims["id"].(float64)), // jwt stores numerical values as float64 so first we need to get it as float64, then convert to int
+			claims["firstname"].(string),
+			claims["lastname"].(string),
+			claims["email"].(string),
+		)
+		c.Request = c.Request.WithContext(ctx)
+		return nil
+	}
+	return fmt.Errorf("invalid token")
 }
 
 type contextKey int
@@ -40,7 +44,7 @@ func WithUser(ctx context.Context, id int, firstnamename, lastname, email string
 
 // CurrentUser returns the user identity from the given context.
 // Nil is returned if no user identity is found in the context.
-func CurrentUser(ctx context.Context) Identity {
+func CurrentUser(ctx context.Context) entity.Identity {
 	if user, ok := ctx.Value(userKey).(entity.User); ok {
 		return user
 	}
