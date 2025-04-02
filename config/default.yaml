@@ -1,0 +1,4 @@
+server_port: 4488
+dsn: "root:zaq1@WSX@tcp(127.0.0.1:3306)/shareflow"
+jwt_signing_key: "LxsKJywDL5O5PvgODZhBH12KE6k2yL8E"
+log_level: "trace"
