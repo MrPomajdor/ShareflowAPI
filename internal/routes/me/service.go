@@ -4,9 +4,9 @@ import (
 	"context"
 	"strings"
 
-	"github.com/MrPomajdor/ShareFlowAPI/internal/auth"
 	"github.com/MrPomajdor/ShareFlowAPI/internal/entity"
 	"github.com/MrPomajdor/ShareFlowAPI/internal/errors"
+	"github.com/MrPomajdor/ShareFlowAPI/internal/routes/auth"
 	"github.com/MrPomajdor/ShareFlowAPI/pkg/dbcontext"
 	dbx "github.com/go-ozzo/ozzo-dbx"
 	"github.com/sirupsen/logrus"
@@ -16,12 +16,18 @@ type Service interface {
 	//Returns authorized users personal information including profile img url
 	Info(ctx context.Context) interface{}
 	//Update updates specified field in user information to specified value
-	Update(ctx context.Context, field, value string, logger *logrus.Logger) error
+	Update(ctx context.Context, request UpdateDataRequest, logger *logrus.Logger) error
+	// Returns service logger
+	GetLogger() *logrus.Logger
 }
 
 type service struct {
 	db     *dbcontext.DB
 	logger *logrus.Logger
+}
+
+func (s service) GetLogger() *logrus.Logger {
+	return s.logger
 }
 
 func NewService(logger *logrus.Logger, db *dbcontext.DB) Service {
@@ -43,14 +49,18 @@ func (s service) Info(ctx context.Context) interface{} {
 		LastName   string
 		Email      string
 		ProfileIMG string
-	}{dbUserData.FirstName, dbUserData.LastName, dbUserData.Email, dbUserData.ProfileIMG}
+		UserID     int
+	}{dbUserData.FirstName, dbUserData.LastName, dbUserData.Email, dbUserData.ProfileIMG, dbUserData.ID}
 	return UserData
 }
 
-func (s service) Update(ctx context.Context, field, value string, logger *logrus.Logger) error {
+func (s service) Update(ctx context.Context, request UpdateDataRequest, logger *logrus.Logger) error {
+	if err := request.Validate(); err != nil {
+		return errors.BadRequest("")
+	}
 	logging := logger.WithContext(ctx)
 	user := auth.CurrentUser(ctx)
-	field = strings.ToLower(field)
+	field := strings.ToLower(request.Field)
 	//check if the user is modifing the correct field
 	var q *dbx.Query
 	switch field {
@@ -67,7 +77,7 @@ func (s service) Update(ctx context.Context, field, value string, logger *logrus
 	}
 
 	q.Bind(dbx.Params{
-		"value": value,
+		"value": request.Value,
 		"id":    user.GetID(),
 	})
 	if _, err := q.Execute(); err != nil {

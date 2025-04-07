@@ -8,11 +8,12 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/MrPomajdor/ShareFlowAPI/internal/auth"
 	"github.com/MrPomajdor/ShareFlowAPI/internal/config"
 	errors "github.com/MrPomajdor/ShareFlowAPI/internal/errors"
-	"github.com/MrPomajdor/ShareFlowAPI/internal/healthcheck"
-	"github.com/MrPomajdor/ShareFlowAPI/internal/info"
+	"github.com/MrPomajdor/ShareFlowAPI/internal/routes/auth"
+	"github.com/MrPomajdor/ShareFlowAPI/internal/routes/healthcheck"
+	info "github.com/MrPomajdor/ShareFlowAPI/internal/routes/me"
+	"github.com/MrPomajdor/ShareFlowAPI/internal/routes/storage"
 	accesslog "github.com/MrPomajdor/ShareFlowAPI/pkg/accesslog"
 	"github.com/MrPomajdor/ShareFlowAPI/pkg/dbcontext"
 	dbx "github.com/go-ozzo/ozzo-dbx"
@@ -28,6 +29,7 @@ var Version = "1.0.0"
 var flagConfig = flag.String("config", "./config/default.yaml", "path to config file")
 
 func main() {
+	// Program configuration
 	flag.Parse()
 	logger := logrus.New()
 
@@ -41,10 +43,11 @@ func main() {
 	}
 	logger.SetLevel(level)
 	logger.WithField("level", cfg.LogLevel).Info("Set log level")
+
+	// Database initialization
 	db, err := dbx.MustOpen("mysql", cfg.DSN)
 	if err != nil {
 		logger.WithField("error", err.Error()).Fatal("Failed to connect to the database")
-
 	}
 
 	db.QueryLogFunc = logDBQuery(logger)
@@ -52,12 +55,14 @@ func main() {
 
 	defer db.Close()
 
+	// HTTP server initialization
 	address := fmt.Sprintf(":%v", cfg.ServerPort)
 	hs := &http.Server{
 		Addr:    address,
 		Handler: buildHandler(logger, dbcontext.New(db), cfg),
 	}
 	go routing.GracefulShutdown(hs, 10*time.Second, logger.Infof)
+
 	logger.WithFields(logrus.Fields{"verison": Version, "address": address}).Info("Server is running")
 	if err := hs.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		logger.Fatal(err)
@@ -74,21 +79,31 @@ func buildHandler(logger *logrus.Logger, db *dbcontext.DB, cfg *config.Config) h
 		content.TypeNegotiator(content.JSON),
 		cors.Handler(cors.AllowAll),
 	)
-
+	// healthcheck routes
 	healthcheck.RegisterHandlers(router, Version)
 
 	rg := router.Group("/v1")
 
 	authHandler := auth.Handler(cfg.JWTSigningKey)
 
-	info.RegisterHandlers(rg.Group(""),
+	// /v1/me/* routes
+	info.RegisterHandlers(
+		rg.Group(""),
 		info.NewService(logger, db),
-		authHandler, logger,
+		authHandler,
 	)
 
-	auth.RegisterHandlers(rg.Group(""),
+	// /v1/(login|register) routes
+	auth.RegisterHandlers(
+		rg.Group(""),
 		auth.NewService(cfg.JWTSigningKey, cfg.JWTExpiration, db, logger),
-		logger,
+	)
+
+	// /v1/storage/* routes
+	storage.RegisterHandlers(
+		rg.Group(""),
+		storage.NewService(storage.NewRepository(db, logger), logger, db, cfg.UserStoragePath),
+		authHandler,
 	)
 
 	return router
@@ -98,7 +113,6 @@ func logDBQuery(logger *logrus.Logger) dbx.QueryLogFunc {
 	return func(ctx context.Context, t time.Duration, query string, rows *sql.Rows, err error) {
 		if err == nil {
 			logger.WithContext(ctx).WithFields(logrus.Fields{"query": query, "duration": t.Milliseconds()}).Debug("Database query succesfull")
-
 		} else {
 			logger.WithContext(ctx).WithField("error", err.Error()).Error("Database query error!")
 		}
@@ -109,7 +123,6 @@ func logDBExec(logger *logrus.Logger) dbx.ExecLogFunc {
 	return func(ctx context.Context, t time.Duration, query string, result sql.Result, err error) {
 		if err == nil {
 			logger.WithContext(ctx).WithFields(logrus.Fields{"query": query, "duration": t.Milliseconds()}).Debug("Database execution succesfull")
-
 		} else {
 			logger.WithContext(ctx).WithField("error", err.Error()).Error("Database execution error!")
 		}

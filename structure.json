@@ -78,5 +78,16 @@
                 "type":"HTTP_Code"
             }
         }
+    },
+    "IF_ERROR":{
+        "Response":{
+            "Body":{
+                "type":"json",
+                "content":{
+                    "status":"http status code",
+                    "message":"error message rg. invalid email or password"
+                }
+            }
+        }  
     }
 }

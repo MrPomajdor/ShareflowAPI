@@ -4,7 +4,7 @@ package entity
 type User struct {
 	ID             int
 	Email          string
-	HashedPassword string
+	HashedPassword string `db:"password"`
 	FirstName      string
 	LastName       string
 	ProfileIMG     string

@@ -25,6 +25,8 @@ type Config struct {
 	JWTExpiration int `yaml:"jwt_expiration" env:"JWT_EXPIRATION"`
 	// Logrus log level
 	LogLevel string `yaml:"log_level" env:"LOG_LEVEL"`
+	// Data storage path for user files
+	UserStoragePath string `yaml:"storage_path" env:"USER_STORAGE_PATH"`
 }
 
 // Load returns an application configuration which is populated from the given configuration file and environment variables.
