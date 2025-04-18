@@ -3,12 +3,22 @@ package storage
 import validation "github.com/go-ozzo/ozzo-validation"
 
 type UploadRequest struct {
-	Path string `json:"path"`
+	Category string `json:"category_name"`
 }
 
 func (m UploadRequest) Validate() error {
 	return validation.ValidateStruct(&m,
-		validation.Field(&m.Path, validation.Required, validation.Length(0, 255)),
+		validation.Field(&m.Category, validation.Length(0, 128)),
+	)
+}
+
+type ListRequest struct {
+	Category string `json:"category_name"`
+}
+
+func (m ListRequest) Validate() error {
+	return validation.ValidateStruct(&m,
+		validation.Field(&m.Category, validation.Length(0, 128)),
 	)
 }
 
@@ -33,23 +43,23 @@ func (m RemoveRequest) Validate() error {
 }
 
 type MoveRequest struct {
-	Path        string `json:"path"`
-	Destination string `json:"destination"`
+	ID                  string `json:"id"`
+	DestinationCategory string `json:"destination_category"`
 }
 
 func (m MoveRequest) Validate() error {
 	return validation.ValidateStruct(&m,
-		validation.Field(&m.Path, validation.Required, validation.Length(0, 255)),
-		validation.Field(&m.Destination, validation.Required, validation.Length(0, 255)),
+		validation.Field(&m.ID, validation.Required, validation.Length(0, 255)),
+		validation.Field(&m.DestinationCategory, validation.Required, validation.Length(0, 128)),
 	)
 }
 
 type CreateURLRequest struct {
-	Path string `json:"path"`
+	ID string `json:"id"`
 }
 
 func (m CreateURLRequest) Validate() error {
 	return validation.ValidateStruct(&m,
-		validation.Field(&m.Path, validation.Required, validation.Length(0, 255)),
+		validation.Field(&m.ID, validation.Required, validation.Length(0, 255)),
 	)
 }

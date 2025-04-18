@@ -6,14 +6,12 @@ import (
 
 // File represents a file record.
 type FileNode struct {
-	ID        string      `json:"id"`
-	Parent_ID *int        `json:"parent_id"`
-	Name      string      `json:"name"`
-	IsDir     bool        `json:"is_dir"`
-	Children  []*FileNode `json:"children,omitempty"`
-	CreatedAt string      `json:"created_at"`
-	OwnerID   int         `json:"owner_id"`
-	Path      string      `json:"path"`
+	ID           int    `json:"id"`
+	Name         string `json:"name"`
+	CategoryName string `json:"category_name"`
+	OwnerID      int    `json:"owner_id"`
+	CreatedAt    string `json:"created_at"`
+	Size         *int   `json:"size"`
 }
 
 // Convert to JSON
@@ -23,11 +21,4 @@ func (node *FileNode) ToJSON() (string, error) {
 		return "", err
 	}
 	return string(jsonData), nil
-}
-
-// AddChild adds a file or directory to a directory
-func (dir *FileNode) AddChild(node *FileNode) {
-	if dir.IsDir {
-		dir.Children = append(dir.Children, node)
-	}
 }

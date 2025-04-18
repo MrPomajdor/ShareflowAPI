@@ -3,49 +3,63 @@ package storage
 import (
 	"context"
 	"database/sql"
-	"fmt"
+	"mime/multipart"
+	"path"
+	"slices"
+	"strconv"
 
 	"github.com/MrPomajdor/ShareFlowAPI/internal/entity"
 	"github.com/MrPomajdor/ShareFlowAPI/internal/errors"
+	"github.com/MrPomajdor/ShareFlowAPI/internal/filesystem"
 	"github.com/MrPomajdor/ShareFlowAPI/internal/routes/auth"
 	"github.com/MrPomajdor/ShareFlowAPI/pkg/dbcontext"
 	dbx "github.com/go-ozzo/ozzo-dbx"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/net/context/ctxhttp"
 )
 
 type Repository interface {
 	// Uploads provided file to server
 	Upload(ctx context.Context, r UploadRequest) error
 	// Get returns the file with the selected id
-	Get(ctx context.Context, r GetRequest) (*entity.FileNode, error)
+	Get(ctx context.Context, id int) (*entity.FileNode, error)
 	// Removes a file with provided path from the server
 	Remove(ctx context.Context, r RemoveRequest) error
 	// Moves a file from provided path to a new destination
 	Move(ctx context.Context, r MoveRequest) error
-	// List provides a list of files and directories owned by the user
-	GetRoot(ctx context.Context) (*entity.FileNode, error)
+	// GetCategories provides a list of directories created by the user.
+	// Includes the default category
+	GetCategories(ctx context.Context) ([]string, error)
+	// GetCategoryContet provides a list of files and directories owned by the user
+	GetCategoryContent(ctx context.Context, category string) ([]*entity.FileNode, error)
 	// CreateURL creates and provides a link for sharing the selected file
-	CreateURL(ctx context.Context, r CreateURLRequest) (string, error)
+	CreateURL(ctx context.Context, id int) (string, error)
+	// Initializes new file in the database with a name and category
+	// returns ID of the file in the database
+	InitializeNewFile(ctx context.Context, name, category_name string) (*entity.FileNode, error)
+	// WriteFile writes provided file onto the disk
+	WriteFile(ctx context.Context, file multipart.File, file_struct *entity.FileNode) error
 }
 
 // repository persists files in database
 type repository struct {
-	db     *dbcontext.DB
-	logger *logrus.Logger
+	db          *dbcontext.DB
+	logger      *logrus.Logger
+	storagePath string
 }
 
 // NewRepository creates a new file repository
-func NewRepository(db *dbcontext.DB, logger *logrus.Logger) Repository {
-	return repository{db, logger}
+func NewRepository(db *dbcontext.DB, logger *logrus.Logger, storagePath string) Repository {
+	return repository{db, logger, storagePath}
 }
 
 func (r repository) Upload(ctx context.Context, req UploadRequest) error {
 	return nil
 }
 
-func (r repository) Get(ctx context.Context, req GetRequest) (*entity.FileNode, error) {
+func (r repository) Get(ctx context.Context, id int) (*entity.FileNode, error) {
 	user := auth.CurrentUser(ctx)
-	q := r.db.DB().Select("*").From("filesystem").Where(dbx.HashExp{"id": req.ID, "owner_id": user.GetID()})
+	q := r.db.DB().Select("*").From("filesystem").Where(dbx.HashExp{"id": id, "owner_id": user.GetID()})
 
 	var node entity.FileNode
 	row, err := q.Build().Rows()
@@ -53,39 +67,56 @@ func (r repository) Get(ctx context.Context, req GetRequest) (*entity.FileNode, 
 		return nil, err
 	}
 
-	if err := row.Scan(&node.ID, &node.Name, &node.IsDir, &node.Parent_ID, &node.OwnerID, &node.CreatedAt); err != nil {
+	if err := row.Scan(&node.ID, &node.Name, &node.OwnerID, &node.CreatedAt, &node.Size); err != nil {
 		return nil, err
 	}
-
-	node.Children, _ = r.getChildren(ctx, node.OwnerID)
 
 	return &node, nil
 }
 
-func (r repository) getChildren(ctx context.Context, parent_id int) ([]*entity.FileNode, error) {
-	q := r.db.DB().Select("*").From("filesystem").Where(dbx.HashExp{"parent_id": parent_id})
+func (r repository) InitializeNewFile(ctx context.Context, name, category string) (*entity.FileNode, error) {
+	user := auth.CurrentUser(ctx)
+	logger := r.logger.WithContext(ctx)
+	q := r.db.DB().Insert("filesystem", dbx.Params{
+		"name":          name,
+		"owner_id":      user.GetID(),
+		"category_name": category,
+	})
 
-	rows, err := q.Build().Rows()
+	res, err := q.Execute()
 	if err != nil {
-		return make([]*entity.FileNode, 0), err
+		logger.WithError(err).Error("File initialization error")
+		return nil, errors.InternalServerError("")
 	}
-
-	nodes := make([]*entity.FileNode, 0)
-	defer rows.Close()
-	for rows.Next() {
-		var node entity.FileNode
-		if err := rows.Scan(&node.ID, &node.Name, &node.IsDir, &node.Parent_ID, &node.OwnerID, &node.CreatedAt); err != nil {
-			return nil, err
-		}
-
-		node.Children, _ = r.getChildren(ctx, node.OwnerID)
-		nodes = append(nodes, &node)
+	// TODO : LastInsertId is not supported by all databases.
+	// Here we also implement a check if the selected database even has that function,
+	// but for now we assume that it has.
+	id, err := res.LastInsertId()
+	if err != nil {
+		return nil, err
 	}
+	new_file := entity.FileNode{}
+	new_file.ID = (int)(id)
+	new_file.Name = name
+	new_file.OwnerID = user.GetID()
+	new_file.CategoryName = category
+	return &new_file, nil
+}
 
-	return nodes, nil
+func (r repository) WriteFile(ctx context.Context, file multipart.File, file_struct *entity.FileNode) error {
+	user := auth.CurrentUser(ctx)
+
+	filePath := path.Join(
+		r.storagePath,
+		strconv.FormatInt((int64)(user.GetID()), 10),
+		strconv.FormatInt((int64)(file_struct.ID), 10),
+	)
+	return filesystem.WriteFile(file, file_struct, filePath)
 }
 
 func (r repository) Remove(ctx context.Context, req RemoveRequest) error {
+	user := auth.CurrentUser(ctx)
+
 	q := r.db.DB().Delete("filesystem", dbx.HashExp{"id": req.ID, "owner_id": auth.CurrentUser(ctx).GetID()})
 	_, err := q.Execute()
 
@@ -96,7 +127,12 @@ func (r repository) Remove(ctx context.Context, req RemoveRequest) error {
 		return errors.InternalServerError("")
 	}
 
-	return nil
+	filePath := path.Join(
+		r.storagePath,
+		strconv.FormatInt((int64)(user.GetID()), 10),
+		req.ID,
+	)
+	return filesystem.RemoveFile(filePath)
 }
 
 func (r repository) Move(ctx context.Context, req MoveRequest) error {
@@ -104,47 +140,73 @@ func (r repository) Move(ctx context.Context, req MoveRequest) error {
 	// q := r.db.DB().Delete("filesystem",dbx.HashExp{"":req.})
 }
 
-func (r repository) GetRoot(ctx context.Context) (*entity.FileNode, error) {
+func (r repository) GetCategories(ctx context.Context) ([]string, error) {
 	loger := r.logger.WithContext(ctx)
 	user := auth.CurrentUser(ctx)
-	q := r.db.DB().Select("*").From("filesystem").Where(dbx.HashExp{"parent_id": nil, "owner_id": user.GetID(), "name": "root"}).Build()
 
-	var node entity.FileNode
+	q := r.db.DB().Select("category_name").From("filesystem").Where(dbx.HashExp{"owner_id": user.GetID()}).Build()
 
-	// Users root filesystem node should be created the moment he registeres,
-	// but in a scenario where that doesn't happen, we create the root node now,
-	// and throw an error 500
-	err := q.Row(&node.ID, &node.Name, &node.IsDir, &node.Parent_ID, &node.OwnerID, &node.CreatedAt)
-
+	rows, err := q.Rows()
+	var categories []string
+	categories = append(categories, "default")
 	if err != nil && err == sql.ErrNoRows {
-		loger.WithError(err).Error("GetRoot error")
-		r.CreateRoot(ctx)
-		return nil, fmt.Errorf("no root")
+		return categories, nil
 	}
 	if err != nil {
-		loger.WithError(err).Error("GetRoot error")
-		return nil, err
+		loger.WithError(err).Error("GetCategories error")
+		return nil, errors.InternalServerError("")
 	}
 
-	node.Children, _ = r.getChildren(ctx, node.OwnerID)
+	for rows.Next() {
+		var cat string
+		rows.Scan(&cat)
+		if !slices.Contains(categories, cat) {
+			categories = append(categories, cat)
+		}
+	}
 
-	return &node, nil
+	return categories, nil
 }
 
-func (r repository) CreateURL(ctx context.Context, req CreateURLRequest) (string, error) {
+func (r repository) GetCategoryContent(ctx context.Context, category_name string) ([]*entity.FileNode, error) {
+	loger := r.logger.WithContext(ctx)
+	user := auth.CurrentUser(ctx)
+
+	q := r.db.DB().Select("*").From("filesystem").Where(dbx.HashExp{"owner_id": user.GetID(), "category_name": category_name}).Build()
+
+	var nodes []*entity.FileNode
+
+	rows, err := q.Rows()
+
+	if err == sql.ErrNoRows {
+		return nil, errors.NotFound("category not found")
+	}
+
+	if err != nil {
+		loger.WithError(err).Error("Get category sql error")
+		return nil, errors.InternalServerError("")
+
+	}
+
+	for rows.Next() {
+		var nd entity.FileNode
+		rows.ScanStruct(&nd)
+		nodes = append(nodes, &nd)
+	}
+	return nodes, nil
+}
+
+func (r repository) CreateURL(ctx context.Context, id int) (string, error) {
 	return "", nil
 }
 
-func (r repository) CreateRoot(ctx context.Context) error {
+func (r repository) CheckUserStoragePath(ctx context.Context) {
 	user := auth.CurrentUser(ctx)
-
-	q := r.db.DB().Insert("filesystem", dbx.Params{
-		"name":      "root",
-		"is_dir":    true,
-		"parent_id": nil,
-		"owner_id":  user.GetID(),
-	})
-
-	_, err := q.Execute()
-	return err
+	userDataPath := path.Join(
+		r.storagePath,
+		strconv.FormatInt((int64)(user.GetID()), 10),
+	)
+	if !filesystem.Exists(userDataPath) {
+		filesystem.CreateDirectory(userDataPath)
+	}
 }

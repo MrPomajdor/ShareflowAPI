@@ -26,7 +26,7 @@ type Config struct {
 	// Logrus log level
 	LogLevel string `yaml:"log_level" env:"LOG_LEVEL"`
 	// Data storage path for user files
-	UserStoragePath string `yaml:"storage_path" env:"USER_STORAGE_PATH"`
+	UserStoragePath string `yaml:"storage_path" env:"STORAGE_PATH"`
 }
 
 // Load returns an application configuration which is populated from the given configuration file and environment variables.
@@ -63,5 +63,6 @@ func (c Config) Validate() error {
 	return validation.ValidateStruct(&c,
 		validation.Field(&c.DSN, validation.Required),
 		validation.Field(&c.JWTSigningKey, validation.Required),
+		validation.Field(&c.UserStoragePath, validation.Required),
 	)
 }

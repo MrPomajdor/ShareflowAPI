@@ -1,17 +1,20 @@
 package entity
 
+import "github.com/MrPomajdor/ShareFlowAPI/internal/permissions"
+
 // User represents a user.
 type User struct {
-	ID             int
-	Email          string
-	HashedPassword string `db:"password"`
-	FirstName      string
-	LastName       string
-	ProfileIMG     string
-	AuthCode       string
-	CreatedAt      string
-	LastLogin      string
-	LastLoginIP    string
+	ID              int
+	Email           string
+	HashedPassword  string `db:"password"`
+	FirstName       string
+	LastName        string
+	ProfileIMG      string
+	AuthCode        string
+	CreatedAt       string
+	LastLogin       string
+	LastLoginIP     string
+	PermissionLevel permissions.Permission
 }
 
 // Identity represents an authenticated user identity.

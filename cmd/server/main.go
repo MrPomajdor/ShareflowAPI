@@ -10,6 +10,7 @@ import (
 
 	"github.com/MrPomajdor/ShareFlowAPI/internal/config"
 	errors "github.com/MrPomajdor/ShareFlowAPI/internal/errors"
+	"github.com/MrPomajdor/ShareFlowAPI/internal/filesystem"
 	"github.com/MrPomajdor/ShareFlowAPI/internal/routes/auth"
 	"github.com/MrPomajdor/ShareFlowAPI/internal/routes/healthcheck"
 	info "github.com/MrPomajdor/ShareFlowAPI/internal/routes/me"
@@ -37,6 +38,12 @@ func main() {
 	if err != nil {
 		logger.WithField("error", err.Error()).Fatal("Failed to load config file")
 	}
+
+	if !filesystem.Exists(cfg.UserStoragePath) {
+		logger.Warn("User storage directory does not exists. Creating.")
+		filesystem.CreateDirectory(cfg.UserStoragePath)
+	}
+
 	level, err := logrus.ParseLevel(cfg.LogLevel)
 	if err != nil {
 		logger.Info("Invalid log level")
@@ -102,7 +109,7 @@ func buildHandler(logger *logrus.Logger, db *dbcontext.DB, cfg *config.Config) h
 	// /v1/storage/* routes
 	storage.RegisterHandlers(
 		rg.Group(""),
-		storage.NewService(storage.NewRepository(db, logger), logger, db, cfg.UserStoragePath),
+		storage.NewService(storage.NewRepository(db, logger, cfg.UserStoragePath), logger, db, cfg.UserStoragePath),
 		authHandler,
 	)
 
